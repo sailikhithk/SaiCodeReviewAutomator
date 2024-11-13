@@ -11,7 +11,8 @@
   ],
   "activationEvents": [
     "onCommand:code-review-assistant.startReview",
-    "onCommand:code-review-assistant.authenticate"
+    "onCommand:code-review-assistant.authenticate",
+    "onCommand:code-review-assistant.configureReviewCriteria"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -23,6 +24,10 @@
       {
         "command": "code-review-assistant.authenticate",
         "title": "Authenticate GitHub"
+      },
+      {
+        "command": "code-review-assistant.configureReviewCriteria",
+        "title": "Configure Review Criteria"
       }
     ],
     "configuration": {
@@ -32,6 +37,11 @@
           "type": "string",
           "default": "",
           "description": "GitHub Personal Access Token"
+        },
+        "codeReviewAssistant.reviewCriteria": {
+          "type": "object",
+          "default": null,
+          "description": "Custom review criteria configuration"
         }
       }
     }

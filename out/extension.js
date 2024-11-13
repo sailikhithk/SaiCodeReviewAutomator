@@ -31,6 +31,7 @@ const code_analyzer_1 = require("./ai/code-analyzer");
 const pr_list_view_1 = require("./views/pr-list-view");
 const auth_1 = require("./utils/auth");
 const storage_1 = require("./utils/storage");
+const config_manager_1 = require("./utils/config-manager");
 async function activate(context) {
     const storageManager = new storage_1.StorageManager(context);
     const authManager = new auth_1.AuthManager(storageManager);
@@ -63,8 +64,37 @@ async function activate(context) {
             vscode.window.showErrorMessage(`Authentication failed: ${errorMessage}`);
         }
     };
+    let configureReviewCriteria = vscode.commands.registerCommand('code-review-assistant.configureReviewCriteria', async () => {
+        try {
+            const currentCriteria = config_manager_1.ConfigManager.getReviewCriteria();
+            for (const category of currentCriteria.categories) {
+                const categoryEnabled = await vscode.window.showQuickPick(['Enable', 'Disable'], {
+                    placeHolder: `${category.name} category`
+                });
+                if (categoryEnabled) {
+                    category.enabled = categoryEnabled === 'Enable';
+                    if (category.enabled) {
+                        for (const rule of category.rules) {
+                            const ruleEnabled = await vscode.window.showQuickPick(['Enable', 'Disable'], {
+                                placeHolder: `${rule.name}: ${rule.description}`
+                            });
+                            if (ruleEnabled) {
+                                rule.enabled = ruleEnabled === 'Enable';
+                            }
+                        }
+                    }
+                }
+            }
+            await config_manager_1.ConfigManager.updateReviewCriteria(currentCriteria);
+            vscode.window.showInformationMessage('Review criteria updated successfully!');
+        }
+        catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+            vscode.window.showErrorMessage(`Failed to update review criteria: ${errorMessage}`);
+        }
+    });
     let authCommand = vscode.commands.registerCommand('code-review-assistant.authenticate', authenticate);
-    context.subscriptions.push(startReview, authCommand);
+    context.subscriptions.push(startReview, authCommand, configureReviewCriteria);
 }
 function deactivate() { }
 //# sourceMappingURL=extension.js.map
