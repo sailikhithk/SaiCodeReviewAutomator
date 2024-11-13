@@ -2,14 +2,17 @@ import OpenAI from 'openai';
 import { ReviewComment } from '../github/github-service';
 import { ConfigManager } from '../utils/config-manager';
 import { ReviewCriteria, ReviewCategory, ReviewRule } from '../models/review-criteria';
+import { AIModelConfig } from '../models/ai-model';
 
 export class CodeAnalyzer {
     private openai: OpenAI;
+    private aiConfig: AIModelConfig;
 
     constructor() {
         this.openai = new OpenAI({
             apiKey: process.env.OPENAI_API_KEY
         });
+        this.aiConfig = ConfigManager.getAIModelConfig();
     }
 
     async analyzeDiff(diff: string): Promise<ReviewComment[]> {
@@ -18,7 +21,7 @@ export class CodeAnalyzer {
             const criteria = ConfigManager.getReviewCriteria();
             
             const response = await this.openai.chat.completions.create({
-                model: "gpt-4o",
+                model: this.aiConfig.type,
                 messages: [
                     {
                         role: "system",
@@ -29,6 +32,8 @@ export class CodeAnalyzer {
                         content: `Please analyze this diff and provide review comments focusing on the following rules: ${enabledRules.join(', ')}. Return comments in JSON format with the following structure: {"comments": [{"path": string, "line": number, "body": string, "rule_id": string}]}\n\n${diff}`
                     }
                 ],
+                max_tokens: this.aiConfig.maxTokens,
+                temperature: this.aiConfig.temperature,
                 response_format: { type: "json_object" }
             });
 
@@ -73,5 +78,10 @@ For each issue you find, provide:
         }
 
         return comments;
+    }
+
+    async updateAIModel(config: AIModelConfig): Promise<void> {
+        this.aiConfig = config;
+        await ConfigManager.updateAIModelConfig(config);
     }
 }

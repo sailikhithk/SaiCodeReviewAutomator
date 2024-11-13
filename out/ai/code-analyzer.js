@@ -11,13 +11,14 @@ class CodeAnalyzer {
         this.openai = new openai_1.default({
             apiKey: process.env.OPENAI_API_KEY
         });
+        this.aiConfig = config_manager_1.ConfigManager.getAIModelConfig();
     }
     async analyzeDiff(diff) {
         try {
             const enabledRules = config_manager_1.ConfigManager.getEnabledRules();
             const criteria = config_manager_1.ConfigManager.getReviewCriteria();
             const response = await this.openai.chat.completions.create({
-                model: "gpt-4o",
+                model: this.aiConfig.type,
                 messages: [
                     {
                         role: "system",
@@ -28,6 +29,8 @@ class CodeAnalyzer {
                         content: `Please analyze this diff and provide review comments focusing on the following rules: ${enabledRules.join(', ')}. Return comments in JSON format with the following structure: {"comments": [{"path": string, "line": number, "body": string, "rule_id": string}]}\n\n${diff}`
                     }
                 ],
+                max_tokens: this.aiConfig.maxTokens,
+                temperature: this.aiConfig.temperature,
                 response_format: { type: "json_object" }
             });
             const content = response.choices[0].message.content;
@@ -67,6 +70,10 @@ For each issue you find, provide:
             }
         }
         return comments;
+    }
+    async updateAIModel(config) {
+        this.aiConfig = config;
+        await config_manager_1.ConfigManager.updateAIModelConfig(config);
     }
 }
 exports.CodeAnalyzer = CodeAnalyzer;

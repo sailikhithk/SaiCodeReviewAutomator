@@ -32,6 +32,7 @@ const pr_list_view_1 = require("./views/pr-list-view");
 const auth_1 = require("./utils/auth");
 const storage_1 = require("./utils/storage");
 const config_manager_1 = require("./utils/config-manager");
+const ai_model_1 = require("./models/ai-model");
 async function activate(context) {
     const storageManager = new storage_1.StorageManager(context);
     const authManager = new auth_1.AuthManager(storageManager);
@@ -93,8 +94,51 @@ async function activate(context) {
             vscode.window.showErrorMessage(`Failed to update review criteria: ${errorMessage}`);
         }
     });
+    let configureAIModel = vscode.commands.registerCommand('code-review-assistant.configureAIModel', async () => {
+        try {
+            const modelType = await vscode.window.showQuickPick(Object.values(ai_model_1.AIModelType), {
+                placeHolder: 'Select AI Model'
+            });
+            if (!modelType) {
+                return;
+            }
+            const maxTokensInput = await vscode.window.showInputBox({
+                prompt: 'Enter max tokens (1024-4096)',
+                value: '2048',
+                validateInput: (value) => {
+                    const num = parseInt(value);
+                    return (num >= 1024 && num <= 4096) ? null : 'Please enter a number between 1024 and 4096';
+                }
+            });
+            if (!maxTokensInput) {
+                return;
+            }
+            const temperatureInput = await vscode.window.showInputBox({
+                prompt: 'Enter temperature (0.0-1.0)',
+                value: '0.3',
+                validateInput: (value) => {
+                    const num = parseFloat(value);
+                    return (num >= 0 && num <= 1) ? null : 'Please enter a number between 0 and 1';
+                }
+            });
+            if (!temperatureInput) {
+                return;
+            }
+            const config = {
+                type: modelType,
+                maxTokens: parseInt(maxTokensInput),
+                temperature: parseFloat(temperatureInput)
+            };
+            await codeAnalyzer.updateAIModel(config);
+            vscode.window.showInformationMessage('AI model configuration updated successfully!');
+        }
+        catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+            vscode.window.showErrorMessage(`Failed to update AI model configuration: ${errorMessage}`);
+        }
+    });
     let authCommand = vscode.commands.registerCommand('code-review-assistant.authenticate', authenticate);
-    context.subscriptions.push(startReview, authCommand, configureReviewCriteria);
+    context.subscriptions.push(startReview, authCommand, configureReviewCriteria, configureAIModel);
 }
 function deactivate() { }
 //# sourceMappingURL=extension.js.map

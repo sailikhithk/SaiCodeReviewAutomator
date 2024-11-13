@@ -26,6 +26,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.ConfigManager = void 0;
 const vscode = __importStar(require("vscode"));
 const review_criteria_1 = require("../models/review-criteria");
+const ai_model_1 = require("../models/ai-model");
 class ConfigManager {
     static getReviewCriteria() {
         const config = vscode.workspace.getConfiguration();
@@ -35,6 +36,15 @@ class ConfigManager {
     static async updateReviewCriteria(criteria) {
         const config = vscode.workspace.getConfiguration();
         await config.update(this.CRITERIA_CONFIG_KEY, criteria, vscode.ConfigurationTarget.Global);
+    }
+    static getAIModelConfig() {
+        const config = vscode.workspace.getConfiguration();
+        const savedConfig = config.get(this.AI_MODEL_CONFIG_KEY);
+        return savedConfig || ai_model_1.defaultAIModelConfig;
+    }
+    static async updateAIModelConfig(aiConfig) {
+        const config = vscode.workspace.getConfiguration();
+        await config.update(this.AI_MODEL_CONFIG_KEY, aiConfig, vscode.ConfigurationTarget.Global);
     }
     static getEnabledRules() {
         const criteria = this.getReviewCriteria();
@@ -51,4 +61,5 @@ class ConfigManager {
 }
 exports.ConfigManager = ConfigManager;
 ConfigManager.CRITERIA_CONFIG_KEY = 'codeReviewAssistant.reviewCriteria';
+ConfigManager.AI_MODEL_CONFIG_KEY = 'codeReviewAssistant.aiModel';
 //# sourceMappingURL=config-manager.js.map

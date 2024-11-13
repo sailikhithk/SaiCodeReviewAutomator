@@ -12,7 +12,8 @@
   "activationEvents": [
     "onCommand:code-review-assistant.startReview",
     "onCommand:code-review-assistant.authenticate",
-    "onCommand:code-review-assistant.configureReviewCriteria"
+    "onCommand:code-review-assistant.configureReviewCriteria",
+    "onCommand:code-review-assistant.configureAIModel"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -28,6 +29,10 @@
       {
         "command": "code-review-assistant.configureReviewCriteria",
         "title": "Configure Review Criteria"
+      },
+      {
+        "command": "code-review-assistant.configureAIModel",
+        "title": "Configure AI Model"
       }
     ],
     "configuration": {
@@ -42,6 +47,11 @@
           "type": "object",
           "default": null,
           "description": "Custom review criteria configuration"
+        },
+        "codeReviewAssistant.aiModel": {
+          "type": "object",
+          "default": null,
+          "description": "AI model configuration"
         }
       }
     }
