@@ -6,17 +6,21 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.CodeAnalyzer = void 0;
 const openai_1 = __importDefault(require("openai"));
 const config_manager_1 = require("../utils/config-manager");
+const rate_limiter_1 = require("../utils/rate-limiter");
 class CodeAnalyzer {
     constructor() {
         this.openai = new openai_1.default({
             apiKey: process.env.OPENAI_API_KEY
         });
         this.aiConfig = config_manager_1.ConfigManager.getAIModelConfig();
+        // OpenAI's rate limits vary by model, using a conservative limit
+        this.rateLimiter = new rate_limiter_1.RateLimiter(60000, 50); // 50 requests per minute
     }
     async analyzeDiff(diff) {
         try {
             const enabledRules = config_manager_1.ConfigManager.getEnabledRules();
             const criteria = config_manager_1.ConfigManager.getReviewCriteria();
+            await this.rateLimiter.waitForToken();
             const response = await this.openai.chat.completions.create({
                 model: this.aiConfig.type,
                 messages: [
@@ -41,6 +45,11 @@ class CodeAnalyzer {
             return this.parseAnalysisResponse(result);
         }
         catch (error) {
+            if (error instanceof Error && error.message.includes('rate limit')) {
+                // Wait and retry once if we hit rate limit
+                await new Promise(resolve => setTimeout(resolve, 20000));
+                return this.analyzeDiff(diff);
+            }
             const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
             throw new Error(`Failed to analyze code: ${errorMessage}`);
         }
@@ -74,6 +83,9 @@ For each issue you find, provide:
     async updateAIModel(config) {
         this.aiConfig = config;
         await config_manager_1.ConfigManager.updateAIModelConfig(config);
+    }
+    getRemainingRequests() {
+        return this.rateLimiter.getRemainingRequests();
     }
 }
 exports.CodeAnalyzer = CodeAnalyzer;
