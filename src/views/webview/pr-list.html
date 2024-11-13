@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pull Request Review</title>
+    <style>
+        :root {
+            --container-padding: 20px;
+            --input-padding-vertical: 6px;
+            --input-padding-horizontal: 4px;
+            --input-margin-vertical: 4px;
+            --input-margin-horizontal: 0;
+        }
+
+        body {
+            padding: var(--container-padding);
+            color: var(--vscode-foreground);
+            font-size: var(--vscode-font-size);
+            font-weight: var(--vscode-font-weight);
+            font-family: var(--vscode-font-family);
+            background-color: var(--vscode-editor-background);
+        }
+
+        ol,
+        ul {
+            padding-left: var(--container-padding);
+        }
+
+        .pr-list {
+            margin-top: 1rem;
+        }
+
+        .pr-item {
+            padding: 1rem;
+            margin-bottom: 1rem;
+            border: 1px solid var(--vscode-widget-border);
+            border-radius: 4px;
+            background-color: var(--vscode-editor-background);
+            transition: background-color 0.2s ease;
+        }
+
+        .pr-item:hover {
+            background-color: var(--vscode-list-hoverBackground);
+        }
+
+        .pr-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+        }
+
+        .pr-title {
+            margin: 0;
+            font-size: 1.1em;
+            color: var(--vscode-editor-foreground);
+        }
+
+        .pr-number {
+            color: var(--vscode-textPreformat-foreground);
+            font-family: var(--vscode-editor-font-family);
+        }
+
+        .pr-meta {
+            font-size: 0.9em;
+            color: var(--vscode-descriptionForeground);
+            margin-bottom: 0.5rem;
+        }
+
+        .pr-author {
+            color: var(--vscode-textLink-foreground);
+        }
+
+        .button-container {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 1rem;
+        }
+
+        button {
+            padding: 6px 14px;
+            border: none;
+            border-radius: 2px;
+            background-color: var(--vscode-button-background);
+            color: var(--vscode-button-foreground);
+            cursor: pointer;
+            font-family: var(--vscode-font-family);
+            font-size: var(--vscode-font-size);
+        }
+
+        button:hover {
+            background-color: var(--vscode-button-hoverBackground);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .review-button {
+            background-color: var(--vscode-button-secondaryBackground);
+            color: var(--vscode-button-secondaryForeground);
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 1rem;
+            color: var(--vscode-descriptionForeground);
+        }
+
+        .loading.active {
+            display: block;
+        }
+
+        .error-message {
+            color: var(--vscode-errorForeground);
+            padding: 1rem;
+            margin: 1rem 0;
+            border: 1px solid var(--vscode-errorForeground);
+            border-radius: 4px;
+            display: none;
+        }
+
+        .error-message.active {
+            display: block;
+        }
+
+        .repo-selector {
+            margin-bottom: 1rem;
+            width: 100%;
+            padding: 8px;
+            background-color: var(--vscode-input-background);
+            color: var(--vscode-input-foreground);
+            border: 1px solid var(--vscode-input-border);
+            border-radius: 2px;
+        }
+
+        .refresh-button {
+            margin-left: auto;
+        }
+
+        .no-prs-message {
+            text-align: center;
+            padding: 2rem;
+            color: var(--vscode-descriptionForeground);
+        }
+    </style>
+</head>
+<body>
+    <div class="repo-header">
+        <input type="text" id="repo-input" class="repo-selector" placeholder="Enter repository (owner/repo)" />
+        <button id="load-prs" class="refresh-button">
+            <span class="button-text">Load Pull Requests</span>
+        </button>
+    </div>
+
+    <div id="error-container" class="error-message"></div>
+    
+    <div id="loading" class="loading">
+        Loading pull requests...
+    </div>
+
+    <div id="pr-container" class="pr-list"></div>
+
+    <template id="pr-template">
+        <div class="pr-item">
+            <div class="pr-header">
+                <h3 class="pr-title">
+                    <span class="pr-number">#{{number}}</span>
+                    {{title}}
+                </h3>
+            </div>
+            <div class="pr-meta">
+                <span>Created by </span>
+                <span class="pr-author">{{author}}</span>
+            </div>
+            <div class="button-container">
+                <button class="review-button" onclick="startReview('{{number}}', '{{repo}}')">
+                    Review Changes
+                </button>
+                <a href="{{url}}" target="_blank">
+                    <button>View on GitHub</button>
+                </a>
+            </div>
+        </div>
+    </template>
+
+    <script>
+        (function() {
+            const vscode = acquireVsCodeApi();
+            let currentRepo = '';
+
+            // Initialize with stored state if any
+            const previousState = vscode.getState();
+            if (previousState) {
+                currentRepo = previousState.repo || '';
+                document.getElementById('repo-input').value = currentRepo;
+            }
+
+            // Event handlers
+            document.getElementById('load-prs').addEventListener('click', async () => {
+                const repoInput = document.getElementById('repo-input').value.trim();
+                if (!repoInput || !repoInput.includes('/')) {
+                    showError('Please enter a valid repository in the format owner/repo');
+                    return;
+                }
+
+                currentRepo = repoInput;
+                vscode.setState({ repo: currentRepo });
+                
+                showLoading(true);
+                vscode.postMessage({
+                    command: 'loadPullRequests',
+                    repo: currentRepo
+                });
+            });
+
+            // Handle messages from the extension
+            window.addEventListener('message', event => {
+                const message = event.data;
+                
+                switch (message.command) {
+                    case 'pullRequestsLoaded':
+                        showLoading(false);
+                        renderPullRequests(message.pullRequests);
+                        break;
+                    case 'error':
+                        showLoading(false);
+                        showError(message.error);
+                        break;
+                }
+            });
+
+            function showLoading(show) {
+                document.getElementById('loading').classList.toggle('active', show);
+                document.getElementById('error-container').classList.remove('active');
+            }
+
+            function showError(message) {
+                const errorContainer = document.getElementById('error-container');
+                errorContainer.textContent = message;
+                errorContainer.classList.add('active');
+            }
+
+            function renderPullRequests(prs) {
+                const container = document.getElementById('pr-container');
+                container.innerHTML = '';
+
+                if (!prs || prs.length === 0) {
+                    container.innerHTML = '<div class="no-prs-message">No open pull requests found</div>';
+                    return;
+                }
+
+                const template = document.getElementById('pr-template');
+                
+                prs.forEach(pr => {
+                    const prNode = document.importNode(template.content, true);
+                    
+                    prNode.querySelector('.pr-number').textContent = `#${pr.number}`;
+                    prNode.querySelector('.pr-title').appendChild(
+                        document.createTextNode(pr.title)
+                    );
+                    prNode.querySelector('.pr-author').textContent = pr.user.login;
+                    
+                    const reviewButton = prNode.querySelector('.review-button');
+                    reviewButton.onclick = () => startReview(pr.number, currentRepo);
+
+                    container.appendChild(prNode);
+                });
+            }
+
+            function startReview(prNumber, repo) {
+                vscode.postMessage({
+                    command: 'startReview',
+                    prNumber: prNumber,
+                    repo: repo
+                });
+            }
+        })();
+    </script>
+</body>
+</html>
