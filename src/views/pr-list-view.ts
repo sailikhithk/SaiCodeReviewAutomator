@@ -25,7 +25,6 @@ export class PRListView {
     }
 
     private async getWebviewContent(): Promise<string> {
-        // Read the content from the HTML file
         const htmlContent = await vscode.workspace.fs.readFile(
             vscode.Uri.file('src/views/webview/pr-list.html')
         );
@@ -49,6 +48,9 @@ export class PRListView {
                     case 'batchReview':
                         await this.handleBatchReview(message.pullRequests);
                         break;
+                    case 'getRateLimits':
+                        this.handleGetRateLimits();
+                        break;
                 }
             } catch (error) {
                 const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
@@ -62,6 +64,18 @@ export class PRListView {
         });
     }
 
+    private handleGetRateLimits() {
+        if (this.panel) {
+            this.panel.webview.postMessage({
+                command: 'rateLimits',
+                limits: {
+                    github: this.githubService.getRemainingRequests(),
+                    openai: this.codeAnalyzer.getRemainingRequests()
+                }
+            });
+        }
+    }
+
     private async handleLoadPullRequests(repoFullName: string) {
         const [owner, repo] = repoFullName.split('/');
         const pullRequests = await this.githubService.getOpenPullRequests(owner, repo);
@@ -71,6 +85,8 @@ export class PRListView {
                 command: 'pullRequestsLoaded',
                 pullRequests
             });
+            // Update rate limits after loading PRs
+            this.handleGetRateLimits();
         }
     }
 
@@ -97,6 +113,9 @@ export class PRListView {
             );
             vscode.window.showInformationMessage('Review submitted successfully!');
         }
+
+        // Update rate limits after review
+        this.handleGetRateLimits();
     }
 
     private async handleBatchReview(pullRequests: Array<{ repo: string; number: number }>) {
@@ -110,8 +129,7 @@ export class PRListView {
                 const total = pullRequests.length;
                 let completed = 0;
                 
-                // Process PRs concurrently but with a limit
-                const batchSize = 3; // Process 3 PRs at a time
+                const batchSize = 3;
                 for (let i = 0; i < pullRequests.length; i += batchSize) {
                     if (token.isCancellationRequested) {
                         break;
@@ -145,7 +163,6 @@ export class PRListView {
 
                     const results = await Promise.all(promises);
                     
-                    // Report results for this batch
                     results.forEach(result => {
                         if (result.success) {
                             vscode.window.showInformationMessage(`Successfully reviewed PR #${result.prNumber}`);
@@ -153,6 +170,9 @@ export class PRListView {
                             vscode.window.showErrorMessage(`Failed to review PR #${result.prNumber}: ${result.error}`);
                         }
                     });
+
+                    // Update rate limits after each batch
+                    this.handleGetRateLimits();
                 }
 
                 return completed;
