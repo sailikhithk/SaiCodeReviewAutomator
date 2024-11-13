@@ -38,6 +38,17 @@
             border-radius: 4px;
             background-color: var(--vscode-editor-background);
             transition: background-color 0.2s ease;
+            display: flex;
+            align-items: flex-start;
+        }
+
+        .pr-checkbox {
+            margin-right: 1rem;
+            margin-top: 0.5rem;
+        }
+
+        .pr-content {
+            flex: 1;
         }
 
         .pr-item:hover {
@@ -76,6 +87,18 @@
             display: flex;
             gap: 0.5rem;
             margin-top: 1rem;
+            justify-content: space-between;
+        }
+
+        .global-actions {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin: 1rem 0;
+            padding: 0.5rem;
+            background-color: var(--vscode-editor-background);
+            border: 1px solid var(--vscode-widget-border);
+            border-radius: 4px;
         }
 
         button {
@@ -101,6 +124,16 @@
         .review-button {
             background-color: var(--vscode-button-secondaryBackground);
             color: var(--vscode-button-secondaryForeground);
+        }
+
+        .batch-review-button {
+            background-color: var(--vscode-button-prominentBackground);
+            color: var(--vscode-button-prominentForeground);
+        }
+
+        .batch-review-button:disabled {
+            background-color: var(--vscode-button-prominentBackground);
+            opacity: 0.5;
         }
 
         .loading {
@@ -146,6 +179,13 @@
             padding: 2rem;
             color: var(--vscode-descriptionForeground);
         }
+
+        .select-all-container {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
     </style>
 </head>
 <body>
@@ -162,27 +202,40 @@
         Loading pull requests...
     </div>
 
+    <div class="global-actions" id="global-actions" style="display: none;">
+        <div class="select-all-container">
+            <input type="checkbox" id="select-all" />
+            <label for="select-all">Select All</label>
+        </div>
+        <button id="batch-review" class="batch-review-button" disabled>
+            Review Selected PRs
+        </button>
+    </div>
+
     <div id="pr-container" class="pr-list"></div>
 
     <template id="pr-template">
         <div class="pr-item">
-            <div class="pr-header">
-                <h3 class="pr-title">
-                    <span class="pr-number">#{{number}}</span>
-                    {{title}}
-                </h3>
-            </div>
-            <div class="pr-meta">
-                <span>Created by </span>
-                <span class="pr-author">{{author}}</span>
-            </div>
-            <div class="button-container">
-                <button class="review-button" onclick="startReview('{{number}}', '{{repo}}')">
-                    Review Changes
-                </button>
-                <a href="{{url}}" target="_blank">
-                    <button>View on GitHub</button>
-                </a>
+            <input type="checkbox" class="pr-checkbox" data-pr-number="{{number}}" data-repo="{{repo}}" />
+            <div class="pr-content">
+                <div class="pr-header">
+                    <h3 class="pr-title">
+                        <span class="pr-number">#{{number}}</span>
+                        {{title}}
+                    </h3>
+                </div>
+                <div class="pr-meta">
+                    <span>Created by </span>
+                    <span class="pr-author">{{author}}</span>
+                </div>
+                <div class="button-container">
+                    <button class="review-button" onclick="startReview('{{number}}', '{{repo}}')">
+                        Review Changes
+                    </button>
+                    <a href="{{url}}" target="_blank">
+                        <button>View on GitHub</button>
+                    </a>
+                </div>
             </div>
         </div>
     </template>
@@ -191,6 +244,7 @@
         (function() {
             const vscode = acquireVsCodeApi();
             let currentRepo = '';
+            let selectedPRs = new Set();
 
             // Initialize with stored state if any
             const previousState = vscode.getState();
@@ -216,6 +270,38 @@
                     repo: currentRepo
                 });
             });
+
+            // Batch review handler
+            document.getElementById('batch-review').addEventListener('click', () => {
+                const selectedPRData = Array.from(document.querySelectorAll('.pr-checkbox:checked'))
+                    .map(checkbox => ({
+                        number: parseInt(checkbox.dataset.prNumber),
+                        repo: checkbox.dataset.repo
+                    }));
+
+                if (selectedPRData.length > 0) {
+                    vscode.postMessage({
+                        command: 'batchReview',
+                        pullRequests: selectedPRData
+                    });
+                }
+            });
+
+            // Select all handler
+            document.getElementById('select-all').addEventListener('change', (e) => {
+                const checkboxes = document.querySelectorAll('.pr-checkbox');
+                checkboxes.forEach(checkbox => {
+                    checkbox.checked = e.target.checked;
+                });
+                updateBatchReviewButton();
+            });
+
+            function updateBatchReviewButton() {
+                const selectedCount = document.querySelectorAll('.pr-checkbox:checked').length;
+                const batchReviewButton = document.getElementById('batch-review');
+                batchReviewButton.disabled = selectedCount === 0;
+                batchReviewButton.textContent = `Review Selected PRs (${selectedCount})`;
+            }
 
             // Handle messages from the extension
             window.addEventListener('message', event => {
@@ -247,6 +333,7 @@
             function renderPullRequests(prs) {
                 const container = document.getElementById('pr-container');
                 container.innerHTML = '';
+                document.getElementById('global-actions').style.display = prs.length > 0 ? 'flex' : 'none';
 
                 if (!prs || prs.length === 0) {
                     container.innerHTML = '<div class="no-prs-message">No open pull requests found</div>';
@@ -258,6 +345,13 @@
                 prs.forEach(pr => {
                     const prNode = document.importNode(template.content, true);
                     
+                    const checkbox = prNode.querySelector('.pr-checkbox');
+                    checkbox.dataset.prNumber = pr.number;
+                    checkbox.dataset.repo = currentRepo;
+                    checkbox.addEventListener('change', () => {
+                        updateBatchReviewButton();
+                    });
+
                     prNode.querySelector('.pr-number').textContent = `#${pr.number}`;
                     prNode.querySelector('.pr-title').appendChild(
                         document.createTextNode(pr.title)
@@ -269,6 +363,8 @@
 
                     container.appendChild(prNode);
                 });
+
+                updateBatchReviewButton();
             }
 
             function startReview(prNumber, repo) {
